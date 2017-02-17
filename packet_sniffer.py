@@ -50,6 +50,23 @@ class IPV4Header(ctypes.Structure):
         return _protocol
 
 
+class ICMPPacket(ctypes.Structure):
+    # https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol#ICMP_datagram_structure
+    _fields_ = (
+        ('type',         ctypes.c_ubyte),
+        ('code',         ctypes.c_ubyte),
+        ('checksum',     ctypes.c_ushort),
+        ('unused',       ctypes.c_ushort),
+        ('next_hop_mtu', ctypes.c_ushort)
+    )
+
+    def __new__(cls, socket_buffer):
+        return cls.from_buffer_copy(socket_buffer)
+
+    def __init__(self, socker_buffer):
+        pass
+
+
 ON_WINDOWS_SYSTEM = os.name == 'nt'
 
 if ON_WINDOWS_SYSTEM:
@@ -84,6 +101,14 @@ try:
               .format(proto=ip_header.protocol,
                       source=ip_header.src_address,
                       dest=ip_header.dst_address))
+
+        if ip_header.protocol == "ICMP":
+            # Calculate where header ends
+            icmp_offset = ip_header.ihl * 4
+            buf = raw_buffer[icmp_offset:icmp_offset + ctypes.sizeof(ICMPPacket)]
+            icmp_header = ICMPPacket(buf)
+            print("ICMP -> Type: %d, Code: %d" % (icmp_header.type, icmp_header.code))
+
 except Exception as e:
     print("Unknown error occurend: %s" % e)
 finally:
