@@ -1,7 +1,55 @@
+from __future__ import print_function
+
 import os
+import struct
 import socket
+import ctypes
+
 
 HOST = '192.168.100.54'
+
+
+class IPV4Header(ctypes.Structure):
+    # https://en.wikipedia.org/wiki/IPv4#Header
+    _fields_ = (
+        ("ihl",          ctypes.c_ubyte, 4),
+        ("version",      ctypes.c_ubyte, 4),
+        ("tos",          ctypes.c_ubyte),
+        ("len",          ctypes.c_ushort),
+        ("id",           ctypes.c_ushort),
+        ("offset",       ctypes.c_ushort),
+        ("ttl",          ctypes.c_ubyte),
+        ("protocol_num", ctypes.c_ubyte),
+        ("sum",          ctypes.c_ushort),
+        ("src",          ctypes.c_uint32),
+        ("dst",          ctypes.c_uint32)
+    )
+
+    PROTOCOL_MAP = {1: "ICMP", 6: "TCP", 17: "UDP"}
+
+    def __new__(cls, socket_buffer=None):
+        return cls.from_buffer_copy(socket_buffer)
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @property
+    def src_address(self):
+        # unisigned int in native order.
+        return socket.inet_ntoa(struct.pack("@I", self.src))
+
+    @property
+    def dst_address(self):
+        return socket.inet_ntoa(struct.pack("@I", self.dst))
+
+    @property
+    def protocol(self):
+        _protocol = self.PROTOCOL_MAP.get(self.protocol_num)
+        if _protocol is None:
+            _protocol = str(self.protocol_num)
+        return _protocol
+
+
 ON_WINDOWS_SYSTEM = os.name == 'nt'
 
 if ON_WINDOWS_SYSTEM:
@@ -26,8 +74,18 @@ if ON_WINDOWS_SYSTEM:
     # that you cannot bind to INADDR_ANY.
     sniffer.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
 
-print("Reading the data.")
-print(sniffer.recvfrom(65565))
 
-if ON_WINDOWS_SYSTEM:
-    sniffer.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
+print("Started reading the data.")
+try:
+    while True:
+        raw_buffer = sniffer.recvfrom(65565)[0]
+        ip_header = IPV4Header(raw_buffer[:20])
+        print("Protocol: {proto} {source} -> {dest}"
+              .format(proto=ip_header.protocol,
+                      source=ip_header.src_address,
+                      dest=ip_header.dst_address))
+except Exception as e:
+    print("Unknown error occurend: %s" % e)
+finally:
+    if ON_WINDOWS_SYSTEM:
+        sniffer.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
